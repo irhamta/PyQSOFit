@@ -36,6 +36,7 @@ newdata = np.rec.array([
                         #(2798.75,'MgII',2700.,2900.,'MgII_na',2,1e-3,5e-4,0.0017,0.01,1,1,0,0.002),\
 
                         (2798.75,'MgII',2700.,2900.,'MgII_br',1,5e-3,0.004,0.05,0.0017,0,0,0,0.05),\
+                        #(2798.75,'MgII',2700.,2900.,'MgII_na',1,1e-3,5e-4,0.0017,0.01,1,1,0,0.002),\
 
                         #(1549.06,'CIV',1500.,1700.,'CIV_br',1,5e-3,0.004,0.05,0.015,0,0,0,0.05),\
                         #(1549.06,'CIV',1500.,1700.,'CIV_na',1,1e-3,5e-4,0.0017,0.01,1,1,0,0.002),\
@@ -128,12 +129,12 @@ q = QSOFit(lam, flux, err, z, ra = ra, dec = dec, path = path1)
 start = timeit.default_timer()
 
 # do the fitting
-q.Fit(name = None, nsmooth = 1, and_or_mask = False, deredden = True, reject_badpix = False, wave_range = [1100, 3000],\
+q.Fit(name = None, nsmooth = 1, and_or_mask = False, deredden = True, reject_badpix = False, wave_range = [1100, 3050],\
       wave_mask =None, decomposition_host = False, Mi = None, npca_gal = 5, npca_qso = 20, \
       Fe_uv_op = True, poly = False, BC = False, rej_abs = False, initial_guess = None, MC = False, \
       n_trails = 5, linefit = True, tie_lambda = True, tie_width = True, tie_flux_1 = True, tie_flux_2 = True,\
       save_result = True, plot_fig = True,save_fig = True, plot_line_name = True, plot_legend = True, \
-      dustmap_path = path4, save_fig_path = path3, save_fits_path = path2,save_fits_name = None)
+      dustmap_path = path4, save_fig_path = path3, save_fits_path = path2, save_fits_name = None)
 
 end = timeit.default_timer()
 print ('Fitting finished in : '+str(np.round(end-start))+'s')
@@ -198,3 +199,35 @@ print("Sigma (km/s)", sigma)
 print("EW (A)",ew)
 print("Peak (A)",peak)
 print("area (10^(-17) erg/s/cm^2)",area)
+
+
+# =============================================================================
+# 6. Derive the physical parameters
+# =============================================================================
+
+print ()
+print ('===== MgII result =====')
+
+c = 299792.458 # speed of light in km/s
+mgii_fwhm = fwhm
+
+print ('MgII FWHM =', mgii_fwhm, 'km/s')
+
+
+def calc_mass(cont_lum, fwhm):
+    log_mass = 6.86 + 2*np.log10(fwhm/1e3) + 0.5*np.log10(cont_lum/1e44)
+    return log_mass
+
+L_3000 = 10**q.conti_result[-2]
+
+M_BH = calc_mass(L_3000, mgii_fwhm)
+print ('log M_BH/M_Sun = ', M_BH)
+
+L_bol = 5.15*L_3000
+print ('log L_bol =',  np.log10(L_bol))
+
+L_Edd = 1.3*1e38 * (10**M_BH)
+print ('L_bol/L_Edd = ', L_bol/L_Edd)
+
+mgii_ew = ew
+print('EW =', mgii_ew)

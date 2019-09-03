@@ -771,6 +771,11 @@ class QSOFit():
                             [1690., 1705.], [1770., 1810.], [1970., 2400.], [2480., 2675.],\
                             [2925., 3000.] ])
 
+            # ignore bad region
+        window_all = np.array([ [1275., 1290.], [1350., 1360.], [1445., 1465.],\
+                            [1970., 2400.], [2480., 2675.],\
+                            [2925., 3000.] ])
+
         # continuum windows from Diamond-Stanic et al. (2009)
 #        window_all = np.array([ [1315, 1325], [1340, 1375],
 #                                 [1425, 1470], [1680, 1710], [1975, 2050],
@@ -1379,6 +1384,7 @@ class QSOFit():
         if linefit == True:
             #plot subplot from 2 to N
             for c in range(self.ncomp):
+                self.ncomp=3
                 if self.ncomp == 4:
                     axn = plt.subplot(2,12,(12+3*c+1,12+3*c+3))
                 if self.ncomp == 3:
