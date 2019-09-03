@@ -29,6 +29,10 @@ import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings("ignore")
 
+# make cosmology model
+from astropy.cosmology import FlatLambdaCDM
+cosmo = FlatLambdaCDM(H0=70, Om0=0.3, Ob0=0.05)
+
 # plot line names
 def plot_line_names(wave, flux, name=False):
 
@@ -54,15 +58,15 @@ def plot_line_names(wave, flux, name=False):
 
 def process():
 
-    # =============================================================================
-    # 1. Setup and read the input spectrum
+# =============================================================================
+# 1. Setup and read the input spectrum
 
-    # Setup the paths and read in your spectrum. Our code is written under the
-    # frame of SDSS spectral data format. Other data is also available as long as
-    # they include wavelength, flux, error, and redshift, and make sure
-    # the wavelength resolution is the same as SDSS spectrum
-    # (For SDSS the pixel scale is 1.e-4 in log space).
-    # =============================================================================
+# Setup the paths and read in your spectrum. Our code is written under the
+# frame of SDSS spectral data format. Other data is also available as long as
+# they include wavelength, flux, error, and redshift, and make sure
+# the wavelength resolution is the same as SDSS spectrum
+# (For SDSS the pixel scale is 1.e-4 in log space).
+# =============================================================================
 
 
     path='./j083/'
@@ -75,18 +79,21 @@ def process():
     # Required
     # an important note that all the data input must be finite, especically for the error !!!
 
+    # The coordinate of the target
+    ra, dec = 83.8370655133264, 11.8482345307907
+
     filename = 'spec1d_coadd_j083_tellcorr_proc.csv'
     data = pd.read_csv('../temp/' + filename)
 
     lam = data.wavelength        # OBS wavelength [A]
-    flux = data.flux             # OBS flux [erg/s/cm^2/A]
+    flux = data.flux_corr             # OBS flux [erg/s/cm^2/A]
     err = data.flux_err          # 1 sigma error
     z = 6.345                    # Redshift
 
     # randomize the flux based on its 1-sigma error
     flux = np.random.normal(loc=flux, scale=err)
 
-    # =============================================================================
+# =============================================================================
     # somehow we need to normalize the flux to make the correct fit
     nconst = 1e-17
 
@@ -94,29 +101,24 @@ def process():
     # when shifting the spectrum to the rest-frame
     err = err*(1+z)/nconst
     flux = flux/nconst
-    # =============================================================================
+# =============================================================================
+# 2. Fitting the spectrum with various models
 
-    # The coordinate of the target
-    ra, dec = 83.8370655133264, 11.8482345307907
-
-    # =============================================================================
-    # 2. Fitting the spectrum with various models
-
-    # Use QSOFit to input the lam, flux, err, z, and other optinal parameters.
-    # Use function Fit to perform the fitting.
-    # Default settings cannot meet all needs.
-    # Please change settings for your own requirements.
-    # It depends on what science you need.
-    # The following example set dereddening, host decomposition to True and
-    # do not perform error measurement using Monte Carlo method.
-    # =============================================================================
+# Use QSOFit to input the lam, flux, err, z, and other optinal parameters.
+# Use function Fit to perform the fitting.
+# Default settings cannot meet all needs.
+# Please change settings for your own requirements.
+# It depends on what science you need.
+# The following example set dereddening, host decomposition to True and
+# do not perform error measurement using Monte Carlo method.
+# =============================================================================
 
 
     # get data prepared
     q = QSOFit(lam, flux, err, z, ra = ra, dec = dec, path = path1)
 
     # do the fitting
-    q.Fit(name = None, nsmooth = 1, and_or_mask = False, deredden = True, reject_badpix = False, wave_range = [1100, 3050],\
+    q.Fit(name = None, nsmooth = 1, and_or_mask = False, deredden = False, reject_badpix = False, wave_range = [1100, 3050],\
           wave_mask =None, decomposition_host = False, Mi = None, npca_gal = 5, npca_qso = 20, \
           Fe_uv_op = True, poly = False, BC = False, rej_abs = True, initial_guess = None, MC = False, \
           n_trails = 5, linefit = True, tie_lambda = True, tie_width = True, tie_flux_1 = True, tie_flux_2 = True,\
@@ -282,9 +284,10 @@ if __name__ == '__main__':
 
     # whether you want to reuse the computed output or not
     read_from_file = False
+    z = 6.345
 
     # here we do teh Monte-Carlo simulation to propagate the flux error
-    for j in range(50):
+    for j in range(1):
         if read_from_file == True:
             result = pd.read_csv(path + 'result/result_temp.csv')
             break
@@ -313,6 +316,54 @@ if __name__ == '__main__':
         plot_fit(q)
         plt.savefig(path + 'figures/fit_result_%i' %j)
 
+# =============================================================================
+# Lya measurement
+# =============================================================================
+
+        lya_mask = [(q.wave >= 1160) & (q.wave <= 1290)]
+        lya = pd.DataFrame({'wave'      : q.wave[lya_mask],
+                            'flux'      : (q.flux-q.f_conti_model)[lya_mask],
+                            'pl_cont'   : q.f_conti_model[lya_mask]})
+
+        lya_cut = lya[lya['flux'] > 0].copy()
+
+        print ('===== Lya result =====')
+
+        lya_ew = (1 - ((lya_cut['flux']+lya_cut['pl_cont'])/lya_cut['pl_cont']))
+        lya_ew_value = abs(np.trapz(y=lya_ew, x=lya_cut['wave']))
+
+        print('Lya EW =', lya_ew_value)
+
+# =============================================================================
+# Calculate the m_1450 rest frame magnitude
+# =============================================================================
+
+        def power_law(x, amp, alpha):
+            return amp * (x/3000)**alpha
+
+#        plt.plot(q.wave, power_law(q.wave, q.conti_result[9], q.conti_result[10]))
+#        plt.plot(q.wave, q.f_pl_model)
+
+        # flux density in per Angstrom
+        F_1450 = power_law(x=1450, amp=q.conti_result[9],
+                           alpha=q.conti_result[10])*1e-17
+
+        # flux density in per Angstrom, need to be converted to per Hz
+        F_1450 = F_1450 * (3.34e4 * 1450**2)
+
+        # Flux density in Jansky, converted to AB magniude
+        m_1450 = -2.5*np.log10(F_1450) + 8.90
+
+        # calculate the distance
+        distance = cosmo.luminosity_distance(z).value # Mpc
+
+        # Absoulte magnitude of M_1450
+        M_1450 = m_1450 - (-5 + 5*np.log10(distance*1e6))
+
+        print ('M_1450 =', M_1450)
+
+
+# =============================================================================
 
         # save the result to DataFrame, initiate at the first loop
         if j == 0:
@@ -320,7 +371,10 @@ if __name__ == '__main__':
                                    'mgii_ew'    : ew,
                                    'mgii_flux'  : area,
                                    'pl_slope'   : q.conti_result[-7],
-                                   'L3000'      : 10**q.conti_result[-2]},
+                                   'L3000'      : 10**q.conti_result[-2],
+
+                                   'lya_ew'     : lya_ew_value,
+                                   'M_1450'     : M_1450},
                                 index=[j])
 
         # append the result to DataFrame
@@ -329,7 +383,10 @@ if __name__ == '__main__':
                                         'mgii_ew'    : ew,
                                         'mgii_flux'  : area,
                                         'pl_slope'   : q.conti_result[-7],
-                                        'L3000'      : 10**q.conti_result[-2]},
+                                        'L3000'      : 10**q.conti_result[-2],
+
+                                        'lya_ew'     : lya_ew_value,
+                                        'M_1450'     : M_1450},
                                 index=[j])
 
             result = result.append(result_temp)
@@ -416,12 +473,14 @@ if __name__ == '__main__':
     fig, axs = plt.subplots(2, 3, figsize=(16, 9))
     fig.subplots_adjust(wspace=0.3, hspace=0.7)
 
+    print ()
     plot_dist((0, 0), 'mgii_fwhm', 'MgII FWHM (km/s)')
     plot_dist((0, 1), 'M_BH', r'$\log (M_{\rm BH}/M_{\odot})$')
     plot_dist((0, 2), 'L_bol/L_Edd', r'$L_{\rm bol}/L_{\rm Edd}$')
-    plot_dist((1, 0), 'L_bol', r'$\log L_{\rm bol}$')
+#    plot_dist((1, 0), 'L_bol', r'$\log L_{\rm bol}$')
+    plot_dist((1, 0), 'M_1450', r'$M_{1450}$')
     plot_dist((1, 1), 'pl_slope', 'PL Slope')
-    plot_dist((1, 2), 'mgii_ew', r'MgII EW ($\AA$)')
+    plot_dist((1, 2), 'lya_ew', r'Ly$\alpha$ EW ($\AA$)')
 
     plt.savefig(path + 'figures/par_estimate')
 
